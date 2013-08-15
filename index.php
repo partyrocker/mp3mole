@@ -28,6 +28,10 @@
     
     /* we use a little bit of session magic */
     session_start();
+    
+    /* initalize the version by reading the version file and storing it as a float value 
+     * NOTE: DO NOT MODIFY THE VERSION FILE */
+    define("__VERSION__", floatval(file_get_contents("VERSION")));
 
     /* The class where all the magic happens */
     class Mole {
