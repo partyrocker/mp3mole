@@ -47,7 +47,7 @@
         /* constructor function that checks if the user submitted a url, else show the form */
         public function __construct() {
             /* set the instance variables we need */
-            $this->ignore = array(".", "..", "img", basename(__FILE__));
+            $this->ignore = array(".", "..", "LICENSE", ".git", "README.md", "img", basename(__FILE__));
                                             
             /* values that are set on the first run */
             if(!isset($_SESSION['firstRun'])) {
