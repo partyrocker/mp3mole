@@ -429,21 +429,9 @@
             /* delete the url from the session */
             unset($_SESSION['url']);
             
-            /* attempt to open the url as a binary file */
-            $stream = fopen($url, "rb");
-            if(!$stream) {
-                /* unable to open that url */
-                $_SESSION['msg'] = "Unable to open the requested url.";
-                $this->redirect();
-                /* exit for good measure */
-                exit();
-            }
-            
             /* decide which download mechanism to use */
             if($_SESSION['option'] == "file") {
                 /* download the file to the server */
-                /* close the file handle since we do not need it */
-                fclose($stream);
                 
                 /* initalize the curl instance */
                 $ch = curl_init($url);
@@ -476,7 +464,17 @@
                     $_SESSION['msg'] = "Failed to connect to the given url.";
                     $this->redirect();
                 }
-            } else if($stream) {
+            } else {
+                /* attempt to open the url as a binary file */
+                $stream = fopen($url, "rb");
+                if(!$stream) {
+                    /* unable to open that url */
+                    $_SESSION['msg'] = "Unable to open the requested url.";
+                    $this->redirect();
+                    /* exit for good measure */
+                    exit();
+                }
+                
                 /* send the file directly to the user only if the url could be opened */
                 /* use all the headers we need to */
                 header('Pragma: public'); 	
