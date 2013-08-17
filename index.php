@@ -26,9 +26,6 @@
         For more information, please refer to <http://unlicense.org/> 
     */
     
-    /* we use a little bit of session magic */
-    session_start();
-    
     /* initalize the version by reading the version file and storing it as a float value 
      * NOTE: DO NOT MODIFY THE VERSION FILE */
     define("__VERSION__", floatval(file_get_contents("VERSION")));
@@ -36,10 +33,77 @@
     /* The class where all the magic happens */
     class Mole {
         
+        /* compute the script url without the msg parameter */
+        private function computeUrl() {
+            /* list of keys to remove */
+            $removeKeys = array("msg", "method");
+            
+            /* get the url and its query */
+            $url = $_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
+            /* lets support https */
+            $url = (!empty($_SERVER['HTTPS'])) ? "https://".$url : "http://".$url;
+            
+            /* check if the url already has a msg parameter and strip it if needed */
+            /* break down the url into its component parts */
+            $urlComponents = parse_url($url);
+            if(isset($urlComponents['query'])) {
+                /* there was a query string */
+                /* break down the components of the query into an array */
+                parse_str($urlComponents['query'], $queryComponents);
+                
+                /* remove all the keys that will be replaced later */
+                foreach($removeKeys as $key) {
+                    if(isset($queryComponents[$key])) {
+                        /* remove the key */
+                        unset($queryComponents[$key]);
+                    }
+                }
+                
+                /* reubild the url */
+                $query = http_build_query($queryComponents);
+                
+                /* get the script path */
+                $url = $_SERVER['SERVER_NAME'].$_SERVER['SCRIPT_NAME'];
+                
+                /* attach the new query if needed */
+                if(strlen($query) > 0) {
+                    $url = $url."?".$query;
+                }
+                
+                /* lets support https */
+                $url = (!empty($_SERVER['HTTPS'])) ? "https://".$url : "http://".$url;
+            }
+            
+            /* set the url without the message for use later */
+            $this->noMsgUrl = $url;
+            
+            /* check if the url already has parameters
+             * NOTE: parse_url returns a string if the URL has parameters or NULL if not */
+            if(parse_url($this->noMsgUrl, PHP_URL_QUERY)) { 
+                $this->noMsgUrl = $this->noMsgUrl . "&method=" . $this->method;
+            } else {
+                $this->noMsgUrl = $this->noMsgUrl . "?method=" . $this->method;
+            }
+        }
+        
         /* redirect back to itself */
         private function redirect() {
-            /* let's support https!! */
-            $url = (!empty($_SERVER['HTTPS'])) ? "https://".$_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'] : "http://".$_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
+            /* add a base64 encoded message to the url if needed */
+            if(isset($this->msg) AND !empty($this->msg)) {
+                /* base64 encode the url */
+                $this->msg = urlencode(base64_encode($this->msg));
+                
+                /* check if the url already has parameters
+                 * NOTE: parse_url returns a string if the URL has parameters or NULL if not */
+                if(parse_url($this->noMsgUrl, PHP_URL_QUERY)) { 
+                    $url = $this->noMsgUrl . "&msg=" . $this->msg;
+                } else {
+                    $url = $this->noMsgUrl . "?msg=" . $this->msg;
+                }
+            } else {
+                /* the url is the computed url */
+                $url = $this->noMsgUrl;
+            }
             
             /* redirect back */
             header("Location: ".$url);
@@ -50,59 +114,67 @@
         
         /* constructor function that checks if the user submitted a url, else show the form */
         public function __construct() {
-            /* set the instance variables we need */
-            $this->ignore = array(".", "..", "LICENSE", ".git", "README.md", "img", basename(__FILE__));
-                                            
-            /* values that are set on the first run */
-            if(!isset($_SESSION['firstRun'])) {
-                $_SESSION['firstRun'] = true;
-                /* set the download option to use the memory by default */
-                $_SESSION['option'] = "memory";
+            /* set the instance variables we need if the variable doesn't exist */
+            if(!isset($this->ignore)) {
+                $this->ignore = array(".", "..", "LICENSE", ".git", "README.md", "VERSION", "img", basename(__FILE__));
+            }
+            
+            /* decide which method is to be used for downloading */
+            $this->method = "memory";
+            
+            /* check what method was passed */
+            if(isset($_POST['option'])) {
+                switch($_POST['option']) {
+                    case 'file':
+                        $this->method = "file";
+                        break;
+                    case 'memory':
+                    default: 
+                        /* this is the default method of downloading */
+                        $this->method = "memory";
+                        break;
+                }
+            } else if(isset($_GET['method']) AND !empty($_GET['method'])) {
+                /* the method was either set manually by the user or forwarded by the script */
+                switch(strtolower($_GET['method'])) {
+                    case 'memory':
+                    case 'file':
+                        $this->method = $_GET['method'];
+                        break;
+                    default:
+                        /* this is the default method of downloading */
+                        $this->method = "memory";
+                }
+            }
+            
+            /* compute the script url */
+            $this->computeUrl();
+            
+            /* check if any method was set in the url */
+            if(!isset($_GET['method']) OR empty($_GET['method'])) {
+                $this->redirect();
             }
                                     
             /* check if any url was set */
-            if(isset($_SESSION['url'])) {
-                $before = microtime(true);
-                
-                /* store a temporary copy of the url since $this->download() will unset it */
-                $url = $_SESSION['url'];
-                
-                /* download and send the file back */
-                $this->download($_SESSION['url']);
-                
-                $after = microtime(true);
-                $_SESSION['msg'] = "Downloaded <strong>$url</strong> in ".($after-$before)." sec";
-            } else if(!isset($_POST['submit'])) {
-                /* there was nothing set so display the form */
-                $this->showMole();
-            } else {
+            if(isset($_POST['url'])) {
                 /* check if the url is valid */
                 if(!(filter_var($_POST['url'], FILTER_VALIDATE_URL) === FALSE)) {
-                    /* move the url to a session variable */
-                    $_SESSION['url'] = $_POST['url'];
-                    
-                    /* check which method is to be used */
-                    if(isset($_POST['option'])) {
-                        switch($_POST['option']) {
-                            case 'file':
-                                $_SESSION['option'] = "file";
-                                break;
-                            case 'memory':
-                            default: /* this is the default method of downloading */
-                                $_SESSION['option'] = "memory";
-                                break;
-                        }
-                    }
+                    $before = microtime(true);
+                
+                    /* download the file */
+                    $this->download($_POST['url'], $this->method);
+                
+                    $after = microtime(true);
+                    $this->setMsg("Downloaded <strong>$url</strong> in ".($after-$before)." sec");
                 } else {
-                    /* check if there was any data sent */
-                    if(empty($_POST['url'])) {
-                        $_SESSION['msg'] = "Please enter a valid URL.";
-                    } else {
-                        $_SESSION['msg'] = "<strong>Invalid URL:</strong> ".$_POST['url'];
-                    }
+                    $this->setMsg("<strong>Invalid URL:</strong> ".$_POST['url']);
                 }
+                
                 /* redirect back */
                 $this->redirect();
+            } else {
+                /* show the webpage */
+                $this->showMole();
             }
         }
         
@@ -132,14 +204,26 @@
             
         }
         
+        /* sets a message that should be displayed to the user
+         * @param msg the message to be displayed */
+        public function setMsg($msg) {
+            /* check if any message was already set */
+            if(isset($this->msg)) {
+                /* separate messages with 2 new lines */
+                $this->msg = $this->msg . "<br /><br />" . $msg;
+            } else {
+                /* set the message */
+                $this->msg = $msg;
+            }
+        }
+        
         /* display mp3Mole */
         private function showMole() {
             $msg = NULL;
             /* check if any message was set */
-            if(isset($_SESSION['msg'])) {
-                /* print the message and destroy it */
-                $msg = $_SESSION['msg'];
-                unset($_SESSION['msg']);
+            if(isset($_GET['msg'])) {
+                /* show the message*/
+                $msg = base64_decode(urldecode($_GET['msg']));
             }
             
             print "
@@ -292,7 +376,6 @@
                             -ms-transform:rotate(-136deg);
                             -webkit-transform:rotate(-136deg);
                         }
-                        
                         #msgbox {
                             position: absolute;
                             background: #FEEFB3;
@@ -346,17 +429,19 @@
                 </head>
                 <body>
                     <div id='container'>
-                        <form method='post'>
+                        <form method='post' action='$this->noMsgUrl'>
                             <div id='wrapper'>
                                 <div id='msgwrapper'>
                                     <div id='msg'>
-                                        <div id='close'><a href='javascript:;' onclick='document.getElementById(\"msgwrapper\").style.display = \"none\";'><img src='img/close.png' alt='close' /></a></div>
+                                        <div id='close'><a href='javascript:;' onclick='document.getElementById(\"msgwrapper\").style.display = \"none\"; history.pushState(\"nomsg\", document.title, \"$this->noMsgUrl\");'><img src='img/close.png' alt='close' /></a></div>
                                         $msg
                                     </div>
                                 </div>
                             </div>
                             <label name='logo' id='logo' for='url'>
-                                <img src='img/rufus.gif' id='logoimg' name='logoimg' alt='Logo' />mp3Mole
+                                <a href='$this->noMsgUrl' title='mp3Mole'>
+                                    <img src='img/rufus.gif' id='logoimg' name='logoimg' alt='Logo' />mp3Mole
+                                    </a>
                             </label>
                             <input type='text' name='url' id='url' />
                             <input type='submit' name='submit' id='submit' value='Download' />
@@ -404,7 +489,7 @@
                     print "
                     <script>
                         document.getElementById('url').focus();
-                        document.getElementById('$_SESSION[option]').checked = true;
+                        document.getElementById('$this->method').checked = true;
                     </script>
                 </body>
             </html>";
@@ -429,12 +514,9 @@
         
         /* download the given url using the appropriate method
          * @param url the url to be downloaded */
-        private function download($url) {
-            /* delete the url from the session */
-            unset($_SESSION['url']);
-            
+        private function download($url, $option = "memory") {
             /* decide which download mechanism to use */
-            if($_SESSION['option'] == "file") {
+            if($option == "file") {
                 /* download the file to the server */
                 
                 /* initalize the curl instance */
@@ -456,16 +538,16 @@
                     /* write the data to a file */
                     if(file_put_contents(basename($url).".jpg", $data) === false) {
                         /* we could not write to the file */
-                        $_SESSION['msg'] = "Failed to create the file: <strong>".basename($url).".jpg</strong>";
+                        $this->setMsg("Failed to create the file: <strong>".basename($url).".jpg</strong>");
                         $this->redirect();
                     } else {
                         /* successfully created the file */
-                        $_SESSION['msg'] = "Downloaded the url: <strong>$url</strong> to <strong>".basename($url).".jpg</strong>";
+                        $this->setMsg("Downloaded the url: <strong>$url </strong> to <strong>".basename($url).".jpg</strong>");
                         $this->redirect();
                     }
                 } else {
                     /* we got nothing back */
-                    $_SESSION['msg'] = "Failed to connect to the given url.";
+                    $this->setMsg("Failed to connect to the given url.");
                     $this->redirect();
                 }
             } else {
@@ -473,7 +555,7 @@
                 $stream = fopen($url, "rb");
                 if(!$stream) {
                     /* unable to open that url */
-                    $_SESSION['msg'] = "Unable to open the requested url.";
+                    $this->setMsg("Unable to open the requested url.");
                     $this->redirect();
                     /* exit for good measure */
                     exit();
@@ -515,6 +597,9 @@
                 
                 /* close the data stream */
                 fclose($stream);
+                
+                /* exit since we cannot redirect after sending data */
+                exit();
             }
         }
     }
