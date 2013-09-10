@@ -25,6 +25,8 @@
 
         For more information, please refer to <http://unlicense.org/> 
     */
+    session_start();
+    
     
     /* initalize the version by reading the version file and storing it as a float value 
      * NOTE: DO NOT MODIFY THE VERSION FILE */
@@ -112,11 +114,43 @@
             exit();
         }
         
+        /* check for updates
+         * @return boolean value of update status */
+        private function checkUpdate() {
+            $url = "https://raw.github.com/partyrocker/mp3mole/master/VERSION";
+            
+            /* initalize the curl instance */
+            $ch = curl_init($url);
+            /* don't return the headers */
+            curl_setopt($ch, CURLOPT_HEADER, FALSE);
+            /* return the data as a string */
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+            /* follow any redirects */
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, TRUE);
+                
+            /* execute the curl */
+            $version = curl_exec($ch);
+            
+            /* close the curl instance */
+            curl_close($ch);
+            
+            if(floatval($version) > __VERSION__) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
         /* constructor function that checks if the user submitted a url, else show the form */
         public function __construct() {
             /* set the instance variables we need if the variable doesn't exist */
             if(!isset($this->ignore)) {
                 $this->ignore = array(".", "..", "LICENSE", ".git", "README.md", "VERSION", "img", basename(__FILE__));
+            }
+            
+            /* check for updates */
+            if(!isset($_SESSION['update'])) {
+                $_SESSION['update'] = $this->checkUpdate();
             }
             
             /* decide which method is to be used for downloading */
@@ -252,6 +286,18 @@
                             -ms-transform:rotate(-136deg);
                             -webkit-transform:rotate(-136deg);
                             margin: -30px;
+                        }
+                        #new {
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            transform:rotate(-36deg);
+                            -ms-transform:rotate(-36deg);
+                            -webkit-transform:rotate(-36deg);
+                            margin: -30px;
+                        }
+                        #new img {
+                            width: 100px;
                         }
                         #bug:hover {
                             margin: -8px;
@@ -481,8 +527,16 @@
                         <a href='https://github.com/partyrocker/mp3mole/issues' target='_blank' title='Report a bug' />
                             <img src='img/bug.png' id='bugimg' alt='bug' />
                         </a>
-                    </div>
-                    ";
+                    </div>";
+                    /* show the new version image only if needed */
+                    if(isset($_SESSION['update']) AND $_SESSION['update'] == true) {
+                        print "<div id='new'>
+                            <a href='https://github.com/partyrocker/mp3mole/' target='_blank' title='New Version Available' />
+                                <img src='img/new.png' id='newimg' alt='new' />
+                            </a>
+                        </div>";
+                    }
+                    
                     if($msg === NULL) {
                         print "<style type='text/css'>#msgwrapper { display: none; }</style>";
                     }
