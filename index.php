@@ -38,7 +38,7 @@
         /* compute the script url without the msg parameter */
         private function computeUrl() {
             /* list of keys to remove */
-            $removeKeys = array("msg", "method");
+            $removeKeys = array("msg", "method", "clear");
             
             /* get the url and its query */
             $url = $_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
@@ -184,6 +184,13 @@
             /* compute the script url */
             $this->computeUrl();
             
+            /* check if we have to clear the downloaded files */
+            if(isset($_GET['clear']) AND $_GET['clear'] == "true") {
+                $this->clearFiles();
+                $this->setMsg("Downloaded files cleared.");
+                $this->redirect();
+            }
+            
             /* check if any method was set in the url */
             if(!isset($_GET['method']) OR empty($_GET['method'])) {
                 $this->redirect();
@@ -260,6 +267,13 @@
                 $msg = base64_decode(urldecode($_GET['msg']));
             }
             
+            /* compute the clear url */
+            if(parse_url($this->noMsgUrl, PHP_URL_QUERY)) { 
+                $clearurl = $this->noMsgUrl . "&clear=true";
+            } else {
+                $clearurl = $this->noMsgUrl . "?clear=true";
+            }
+            
             print "
             <html>
                 <head>
@@ -274,6 +288,12 @@
                         a {
                             text-decoration: none;
                             color: inherit;
+                        }
+                        #clearfiles {
+                            float: right;
+                        }
+                        #deleteimg {
+                            width: 24px;
                         }
                         #bugimg {
                             width: 72px;
@@ -515,6 +535,9 @@
                             <div id='filelistheader'>
                                 <h1>Directory Listing:</h1>
                             </div>
+                            <div id='clearfiles'>
+                                <a href='$clearurl' title='Delete Downloaded Files' onclick='return confirm(\"Are you sure you want to delete all the downloaded files?\");' /><img src='img/delete.png' id='deleteimg' alt='Delete Downloaded Files' /></a>
+                            </div>
                             <div id='files'>
                     ";
                     /* list all files in this folder */
@@ -560,6 +583,24 @@
                         print "<span class='file'><a href='$entry' title='Download \"$entry\"'><img src='img/file.png' alt='Download \"$entry\"' class='fileimg' /><span class='filename'>$entry</span></a><span class='filesize'>";
                         print $this->formatBytes(filesize($entry));
                         print "</span></span><br />";
+                    }
+                }
+                closedir($handle);
+            }
+         }
+         
+        /* clear all the files in the current directory (except the ignored files) */
+         private function clearFiles() {
+             /* open the current directory */
+             if($handle = opendir('.')) {
+                 /* read the directory until no files are found */
+                while(FALSE !== ($entry = readdir($handle))) {
+                    /* only delete the file if it was not in the ignore array */
+                    if(!in_array($entry, $this->ignore)) {
+                        /* attempt to delete the file */
+                        if(!unlink($entry)) {
+                            $this->setMsg("Unable to delete file \"$entry\"");
+                        }
                     }
                 }
                 closedir($handle);
